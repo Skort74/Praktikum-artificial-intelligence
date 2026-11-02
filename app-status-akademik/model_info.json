@@ -1,0 +1,52 @@
+{
+  "nama_model": "DNN (MLPClassifier 64-32-16)",
+  "fitur_numerik": [
+    "ipk",
+    "kehadiran",
+    "jam_belajar",
+    "tugas_terkumpul",
+    "nilai_uts"
+  ],
+  "fitur_kategori": [
+    "aktif_organisasi"
+  ],
+  "kelas": [
+    "Aman",
+    "Berisiko",
+    "Waspada"
+  ],
+  "rentang_fitur": {
+    "ipk": [
+      2.0,
+      4.0
+    ],
+    "kehadiran": [
+      45.0,
+      100.0
+    ],
+    "jam_belajar": [
+      0.0,
+      30.0
+    ],
+    "tugas_terkumpul": [
+      35.0,
+      100.0
+    ],
+    "nilai_uts": [
+      24.0,
+      100.0
+    ]
+  },
+  "metrik": {
+    "accuracy": 0.84,
+    "f1_macro": 0.8269,
+    "f1_baseline": 0.18,
+    "n_test": 200
+  },
+  "versi": {
+    "scikit-learn": "1.6.1",
+    "pandas": "2.2.3",
+    "numpy": "2.1.3",
+    "joblib": "1.6.0"
+  }
+}
