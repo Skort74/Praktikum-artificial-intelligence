@@ -2,6 +2,7 @@ import json
 import joblib
 import pandas as pd
 import streamlit as st
+from pathlib import Path
 
 st.set_page_config(
     page_title="Prediksi Status Akademik",
@@ -9,14 +10,16 @@ st.set_page_config(
     layout="centered",
 )
 
-# --- 1. Muat model & metadata ---
+# Path absolut ke folder app.py — aman dipakai di lokal maupun Streamlit Cloud
+BASE_DIR = Path(__file__).resolve().parent
+
 @st.cache_resource
 def load_model():
-    return joblib.load("model_status_akademik.pkl")
+    return joblib.load(BASE_DIR / "model_status_akademik.pkl")
 
 @st.cache_data
 def load_info():
-    with open("model_info.json", "r", encoding="utf-8") as f:
+    with open(BASE_DIR / "model_info.json", "r", encoding="utf-8") as f:
         return json.load(f)
 
 model = load_model()
