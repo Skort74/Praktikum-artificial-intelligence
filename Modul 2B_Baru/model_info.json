@@ -1,0 +1,12 @@
+{
+  "nama_model": "DNN (MLPClassifier 64-32-16)",
+  "kelas": [
+    "Selamat (0)",
+    "Meninggal (1)"
+  ],
+  "metrik": {
+    "accuracy": 0.85,
+    "f1_macro": 0.8119,
+    "n_test": 60
+  }
+}
