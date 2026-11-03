@@ -2,32 +2,59 @@ import streamlit as st
 import pandas as pd
 import time
 import os
+import traceback
 from groq import Groq
 from classifier import NAMA_FITUR, classify, load_config
 
-# 1. Konfigurasi Halaman
 st.set_page_config(page_title="Prediksi Gagal Jantung (LLM)", page_icon="🤖", layout="wide")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# 2. Muat Konfigurasi dari Modul 2A
-cfg = load_config(os.path.join(BASE_DIR, "config.json"))
-FITUR = list(NAMA_FITUR.keys())
-
-# 3. Inisialisasi Groq Client
+# KITA BUNGKUS SEMUA INISIALISASI DALAM TRY-EXCEPT
 try:
-    API_KEY = st.secrets["GROQ_API_KEY"]
-except Exception:
-    st.error("GROQ_API_KEY belum diatur. Isi di .streamlit/secrets.toml (lokal) atau menu Secrets (Streamlit Cloud).")
-    st.stop()
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    
+    # 1. Cek file config.json
+    if not os.path.exists(os.path.join(BASE_DIR, "config.json")):
+        raise FileNotFoundError("File config.json tidak ditemukan di folder ini!")
+        
+    cfg = load_config(os.path.join(BASE_DIR, "config.json"))
+    FITUR = list(NAMA_FITUR.keys())
+    
+    # 2. Cek API Key
+    try:
+        API_KEY = st.secrets["GROQ_API_KEY"]
+        if not API_KEY.startswith("gsk_"):
+            raise ValueError("Format API Key salah! Harus diawali dengan 'gsk_'")
+    except KeyError:
+        raise KeyError("GROQ_API_KEY tidak ditemukan di menu Secrets Streamlit Cloud!")
+        
+    # 3. Inisialisasi Groq
+    @st.cache_resource
+    def get_client():
+        return Groq(api_key=API_KEY)
+    client = get_client()
 
-@st.cache_resource
-def get_client():
-    return Groq(api_key=API_KEY)
+except Exception as e:
+    st.error("### 🚨 APLIKASI CRASH SAAT INISIALISASI!")
+    st.write("Silakan **copy-paste** teks di dalam kotak abu-abu di bawah ini ke chat saya:")
+    st.code(traceback.format_exc(), language="python")
+    st.stop() # Hentikan aplikasi agar tidak loading terus
 
-client = get_client()
+# ================= KODE UI DI BAWAH INI SAMA SEPERTI SEBELUMNYA =================
 
-# 4. Fungsi Prediksi dengan Cache (Hemat Kuota)
+ev = cfg.get("evaluasi", {})
+with st.sidebar:
+    st.header("Tentang Model LLM")
+    st.write(f"**Model:** `{cfg.get('model', 'Tidak diketahui')}`")
+    st.write(f"**Few-shot:** {len(cfg.get('few_shot', []))} contoh")
+    if ev:
+        st.metric("F1 Macro (Data Uji)", f"{ev.get('f1_macro', 0):.3f}")
+        st.metric("Accuracy (Data Uji)", f"{ev.get('accuracy', 0)*100:.1f}%")
+
+st.title("🤖 Klasifikasi Risiko Gagal Jantung (Groq LLM)")
+st.write("Masukkan data klinis pasien.")
+
+tab1, tab2, tab3 = st.tabs(["🔮 Prediksi Satu Data", "📁 Prediksi dari CSV", "📥 Unduh Sampel Data"])
+
 @st.cache_data(show_spinner=False)
 def prediksi(age, anaemia, cpk, diabetes, ef, hbp, platelets, creatinine, sodium, sex, smoking, time_obs):
     data = {
@@ -38,39 +65,19 @@ def prediksi(age, anaemia, cpk, diabetes, ef, hbp, platelets, creatinine, sodium
     }
     return classify(client, cfg, data)
 
-# 5. Sidebar Info
-ev = cfg["evaluasi"]
-with st.sidebar:
-    st.header("Tentang Model LLM")
-    st.write(f"**Model:** `{cfg['model']}`")
-    st.write(f"**Few-shot:** {len(cfg['few_shot'])} contoh")
-    st.metric("F1 Macro (Data Uji)", f"{ev['f1_macro']:.3f}")
-    st.metric("Accuracy (Data Uji)", f"{ev['accuracy']*100:.1f}%")
-    st.caption(f"Dievaluasi pada {ev['n']} data uji, tanggal {ev['tanggal']}")
-
-st.title("🤖 Klasifikasi Risiko Gagal Jantung (Groq LLM)")
-st.write("Masukkan data klinis pasien. Model AI akan memprediksi apakah pasien diprediksi **Selamat (0)** atau **Meninggal (1)**.")
-
-# 6. Tab Navigasi
-tab1, tab2, tab3 = st.tabs(["🔮 Prediksi Satu Data", "📁 Prediksi dari CSV", "📥 Unduh Sampel Data"])
-
-# --- TAB 1: Form Input ---
 with tab1:
     with st.form("form_prediksi"):
         col1, col2, col3 = st.columns(3)
-        
         with col1:
             age = st.number_input("Usia", 20, 100, 60)
             anaemia = st.selectbox("Anaemia (0=Tidak, 1=Ya)", [0, 1])
-            cpk = st.number_input("Creatinine Phosphokinase (CPK)", 0, 10000, 500)
+            cpk = st.number_input("CPK", 0, 10000, 500)
             diabetes = st.selectbox("Diabetes (0=Tidak, 1=Ya)", [0, 1])
-            
         with col2:
             ef = st.number_input("Ejection Fraction (%)", 10, 80, 38)
             hbp = st.selectbox("Hipertensi (0=Tidak, 1=Ya)", [0, 1])
             platelets = st.number_input("Platelets", 0.0, 1000000.0, 250000.0)
             creatinine = st.number_input("Serum Creatinine", 0.0, 10.0, 1.0)
-            
         with col3:
             sodium = st.number_input("Serum Sodium", 100, 150, 137)
             sex = st.selectbox("Jenis Kelamin (1=Laki-laki, 0=Perempuan)", [0, 1])
@@ -82,10 +89,7 @@ with tab1:
         if submitted:
             with st.spinner("Menghubungi Groq LLM..."):
                 hasil = prediksi(age, anaemia, cpk, diabetes, ef, hbp, platelets, creatinine, sodium, sex, smoking, time_obs)
-                
                 st.divider()
-                st.subheader("Hasil Prediksi LLM")
-                
                 if hasil == "1":
                     st.error("### ⚠️ Pasien Diprediksi **MENINGGAL (1)**")
                 elif hasil == "0":
@@ -93,28 +97,21 @@ with tab1:
                 else:
                     st.warning("Model tidak dapat memberikan jawaban yang valid. Silakan coba lagi.")
 
-# --- TAB 2: Prediksi CSV ---
 with tab2:
     st.subheader("Unggah File CSV")
-    st.write("Unggah CSV dengan 12 kolom klinis. (Maksimal 30 baris agar hemat kuota API).")
-    
     file = st.file_uploader("Pilih file CSV", type=["csv"])
     if file is not None:
         df = pd.read_csv(file)
         kurang = [c for c in FITUR if c not in df.columns]
-        
         if kurang:
-            st.error(f"Kolom berikut tidak ditemukan: {', '.join(kurang)}")
+            st.error(f"Kolom tidak ditemukan: {', '.join(kurang)}")
         else:
-            df = df.head(30) # Batasi 30 baris
-            st.dataframe(df.head()) # Tampilkan preview
-            
+            df = df.head(30)
+            st.dataframe(df.head())
             if st.button("Prediksi Semua dengan LLM"):
                 bar = st.progress(0.0)
                 hasil = []
-                
                 for i, (_, b) in enumerate(df.iterrows(), start=1):
-                    # Panggil fungsi prediksi
                     pred = prediksi(
                         int(b["age"]), int(b["anaemia"]), int(b["creatinine_phosphokinase"]),
                         int(b["diabetes"]), int(b["ejection_fraction"]), int(b["high_blood_pressure"]),
@@ -123,23 +120,17 @@ with tab2:
                     )
                     hasil.append("Meninggal" if pred == "1" else "Selamat" if pred == "0" else "Invalid")
                     bar.progress(i / len(df))
-                    time.sleep(3) # Jeda 3 detik per request (Wajib)
-                    
+                    time.sleep(3)
                 df["Prediksi_LLM"] = hasil
                 st.dataframe(df)
                 st.download_button("📥 Unduh Hasil", df.to_csv(index=False), "hasil_prediksi_llm.csv", "text/csv")
 
-# --- TAB 3: Unduh Sampel Data ---
 with tab3:
     st.subheader("Unduh Sampel Data Uji")
-    st.write("Gunakan file ini untuk mencoba fitur prediksi massal di tab kedua.")
-    if os.path.exists(os.path.join(BASE_DIR, "dataset_heart.csv")):
-        sample_df = pd.read_csv(os.path.join(BASE_DIR, "dataset_heart.csv"))
-        sample_df = sample_df.drop(columns=["DEATH_EVENT", "bagian"]).head(10)
+    dataset_path = os.path.join(BASE_DIR, "dataset_heart.csv")
+    if os.path.exists(dataset_path):
+        sample_df = pd.read_csv(dataset_path).drop(columns=["DEATH_EVENT", "bagian"]).head(10)
         st.dataframe(sample_df)
-        st.download_button(
-            label="📥 Unduh Sampel CSV",
-            data=sample_df.to_csv(index=False).encode('utf-8'),
-            file_name='sampel_jantung.csv',
-            mime='text/csv',
-        )
+        st.download_button("📥 Unduh Sampel CSV", sample_df.to_csv(index=False).encode('utf-8'), "sampel_jantung.csv", "text/csv")
+    else:
+        st.warning("File 'dataset_heart.csv' tidak ditemukan di repositori Anda.")
